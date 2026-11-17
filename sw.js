@@ -1,5 +1,5 @@
 const prefix = 'asg-interlining-' + self.registration.scope + '-';
-const cacheName = prefix + 'v1';
+const cacheName = prefix + 'v4';
 const files = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const urls = new Set(files.map(file => new URL(file, self.registration.scope).href));
 
@@ -30,3 +30,6 @@ self.addEventListener('fetch', event => {
     return await cache.match(request) || Response.error();
   })());
 });
+
+
+
