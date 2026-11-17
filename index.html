@@ -33,8 +33,8 @@
 'use strict';
 const sizes = {
   'ASG CF':['S','M','L','XL','2XL','3XL'], 'ASG CF(M)':['S','M','L','XL','2XL','3XL'],
-  'RFB':['4-6YRS','7-10YRS','11-16YRS'], 'RFB(M)':['4-6YRS','7-10YRS','11-16YRS'],
-  'RFB [C]':['4-6YRS','7-10YRS','11-16YRS'], 'BSF':['16','18-26','28-32','34-38'],
+  'RFB':['4-6YRS','7-10YRS','11-14YRS','16YRS'], 'RFB(M)':['4-6YRS','7-10YRS','11-14YRS','16YRS'],
+  'RFB [C]':['4-6YRS','7-10YRS','11-14YRS','16YRS'], 'BSF':['16','18-26','28-32','34-38'],
   'BFS(M)':['16','18-26','28-32','34-38']
 };
 const choices = {pattern:Object.keys(sizes),material:['5252 CANVAS','8080 MICRODOT'],color:['WHITE','CHARCOAL'],cuff:['DIAMOND','BOX','ROUND']};
@@ -62,7 +62,8 @@ const tagTotal = line => tagSizes(line).reduce((sum,size)=>sum+(Number(line.quan
 function groupOldTags(lines) {
   return lines.reduce((groups,row)=>{
     if(row.quantities) {groups.push(row);return groups;}
-    const sizeStyle=row.sizeStyle || ['ASG CF','RFB','BSF'].find(style=>sizes[style].includes(row.size) || tagSizeStyles[style].includes(row.size)) || 'ASG CF';
+    const sizeStyle=row.sizeStyle || ['ASG CF','RFB','BSF'].find(style=>sizes[style].includes(row.size) || tagSizeStyles[style].includes(row.size) ||
+      (style==='RFB' && row.size==='11-16YRS')) || 'ASG CF';
     const group=groups.at(-1);
     if(group && group.sizeStyle===sizeStyle && row.size && !(row.size in group.quantities) &&
       sharedTagFields.every(([key])=>group[key]===row[key])) {
@@ -97,7 +98,14 @@ function readOrders() {
 }
 let order = newOrder();
 let dirty = false;
-const partTotal = (line,part) => sizes[line.pattern].reduce((sum,size) => sum + (Number(line.components[part][size]) || 0),0);
+const interliningSizes = line => {
+  const current = sizes[line.pattern];
+  if (!current.includes('11-14YRS')) return current;
+  const hasLegacy = Object.values(line.components).some(counts =>
+    counts['11-16YRS'] != null && counts['11-16YRS'] !== '');
+  return hasLegacy ? [...current,'11-16YRS'] : current;
+};
+const partTotal = (line,part) => interliningSizes(line).reduce((sum,size) => sum + (Number(line.components[part][size]) || 0),0);
 const lineTotal = line => partTotal(line,'collar') + partTotal(line,'cuff');
 const orderTotal = order => order.lines.reduce((sum,line) =>
   sum + (isTag(order) ? tagTotal(line) : lineTotal(line)),0);
@@ -205,7 +213,7 @@ function renderLines() {
         group.setAttribute('aria-labelledby',title.id);
         const grid = make('div',undefined,'sizes');
         const counts = line.components[part];
-        grid.append(...sizes[line.pattern].map(size => {
+        grid.append(...interliningSizes(line).map(size => {
           const label = make('label',size);
           const input = make('input');
           input.type='number'; input.min='0'; input.max='999999999'; input.step='1'; input.inputMode='numeric';
@@ -309,7 +317,7 @@ function printOrder(record) {
     item.append(make('h2',(index+1)+'. '+line.pattern),make('p',[line.material,line.color,line.cuff].join(' / ')));
     const table=make('table');
     const head=table.createTHead().insertRow();
-    for(const label of ['Component',...sizes[line.pattern],'Subtotal']) {
+    for(const label of ['Component',...interliningSizes(line),'Subtotal']) {
       const cell=make('th',label);
       cell.scope='col';
       head.append(cell);
@@ -320,7 +328,7 @@ function printOrder(record) {
       const label=make('th',name);
       label.scope='row';
       row.append(label);
-      for(const size of sizes[line.pattern]) {
+      for(const size of interliningSizes(line)) {
         row.append(make('td',format(Number(line.components[part][size])||0)));
       }
       row.append(make('td',format(partTotal(line,part))));
