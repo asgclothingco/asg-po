@@ -50,17 +50,19 @@ const tagFields = [
   ['size','Size'], ['sleeve','Sleeve'], ['fit','Fit'], ['mrp','MRP (₹)'],
   ['pack','Pack qty'], ['quantity','Order qty']
 ];
-const tagStyles = ['ASG CF','RFB','BSF'];
+const rfbTagSizes = ['4-5 YRS','5-6 YRS','7-8 YRS','9-10 YRS','11-12 YRS','13-14 YRS','15-16 YRS'];
+const tagSizeStyles = {'ASG CF':sizes['ASG CF'],RFB:rfbTagSizes,'RFB(M)':rfbTagSizes,'RFB(C)':rfbTagSizes,BSF:sizes.BSF};
+const tagStyles = Object.keys(tagSizeStyles);
 const sharedTagFields = tagFields.filter(([key]) => key!=='size' && key!=='quantity');
 const newTag = () => ({...Object.fromEntries(sharedTagFields.map(([key]) => [key,''])),
   sizeStyle:'ASG CF', quantities:{}});
-const tagSizes = line => [...new Set([...(sizes[line.sizeStyle] || []),
+const tagSizes = line => [...new Set([...(tagSizeStyles[line.sizeStyle] || []),
   ...Object.keys(line.quantities).filter(size=>line.quantities[size]!=='')])];
 const tagTotal = line => tagSizes(line).reduce((sum,size)=>sum+(Number(line.quantities[size])||0),0);
 function groupOldTags(lines) {
   return lines.reduce((groups,row)=>{
     if(row.quantities) {groups.push(row);return groups;}
-    const sizeStyle=row.sizeStyle || tagStyles.find(style=>sizes[style].includes(row.size)) || 'ASG CF';
+    const sizeStyle=row.sizeStyle || ['ASG CF','RFB','BSF'].find(style=>sizes[style].includes(row.size) || tagSizeStyles[style].includes(row.size)) || 'ASG CF';
     const group=groups.at(-1);
     if(group && group.sizeStyle===sizeStyle && row.size && !(row.size in group.quantities) &&
       sharedTagFields.every(([key])=>group[key]===row[key])) {
@@ -245,7 +247,7 @@ function openOrder(record) {
   byId('orderType').value=order.type || 'interlining';
   byId('date').value=order.date;
   byId('factory').value=order.factory;
-  byId('number').textContent=order.number;
+  byId('number').textContent='PO number: '+order.number;
   renderLines();
   show('editor');
 }
@@ -281,7 +283,7 @@ function validOrder() {
 }
 function printOrder(record) {
   const paper=byId('paper');
-  paper.replaceChildren(make('h1','ASG Clothing Co.'),make('h2',isTag(record)?'MRP tag purchase order':'Interlining purchase order'),make('p',record.number),make('p','Order date: '+record.date),make('p','Factory: '+record.factory.trim()));
+  paper.replaceChildren(make('h1','ASG Clothing Co.'),make('h2',isTag(record)?'MRP tag purchase order':'Interlining purchase order'),make('p','PO number: '+record.number),make('p','Order date: '+record.date),make('p','Factory: '+record.factory.trim()));
   if(isTag(record)) {
     const table=make('table',undefined,'tag-print');
     const head=table.createTHead().insertRow();
@@ -347,7 +349,7 @@ function renderHistory() {
         notice(''); openOrder(record);
       }));
       if(record.status==='Saved') actions.append(button('Print / save PDF',()=>printOrder(record)));
-      card.append(top,make('p',record.number+' | '+(record.date||'No date')+' | '+format(orderTotal(record))+(isTag(record)?' tags':' units'),'muted'),actions);
+      card.append(top,make('p','PO number: '+record.number+' | '+(record.date||'No date')+' | '+format(orderTotal(record))+(isTag(record)?' tags':' units'),'muted'),actions);
       return card;
     }));
     if(!saved.length) records.append(make('p','No saved orders yet.','panel muted'));
@@ -369,7 +371,7 @@ byId('orderType').onchange=event=>{
   order={...newOrder(),type,date:order.date,factory:order.factory,
     lines:[type==='tags'?newTag():newLine()]};
   dirty=Boolean(order.factory);
-  byId('number').textContent=order.number;
+  byId('number').textContent='PO number: '+order.number;
   notice('');
   renderLines();
 };
@@ -389,6 +391,7 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && location
 openOrder(order);
 </script>
 </html>
+
 
 
 
