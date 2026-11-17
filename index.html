@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interlining Orders | ASG Clothing Co.</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14382e">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{font-family:"Instrument Sans",system-ui,sans-serif;color:#17352d;background:#f4f5ef;color-scheme:light}*{box-sizing:border-box}body{margin:0}header{background:#14382e;color:white;padding:20px max(20px,calc((100% - 1060px)/2));display:flex;justify-content:space-between;align-items:center;gap:20px}header strong{white-space:nowrap}nav{display:flex;gap:8px}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #b6c9bf;border-radius:8px;padding:10px 14px;background:white;color:#14382e;font-weight:650;min-height:44px}button.primary,nav button[aria-current=true]{background:#17634d;color:white;border-color:#17634d}button:hover{filter:brightness(.95)}:focus-visible{outline:3px solid #ad6a26;outline-offset:2px}main{max-width:1100px;margin:auto;padding:34px 20px 64px}h1{font-size:clamp(2rem,5vw,3rem);margin:0;letter-spacing:-.05em}h2{font-size:1.18rem;margin:0}.muted{color:#50665d}.hero{margin-bottom:24px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:20px;align-items:start}.panel{background:white;border:1px solid #dce4db;border-radius:14px;padding:20px;margin-bottom:14px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.fields,.sizes{display:grid;gap:12px;margin-top:16px;grid-template-columns:repeat(2,minmax(0,1fr))}.sizes{grid-template-columns:repeat(6,minmax(0,1fr));padding:14px;background:#f3f6f1;border-radius:10px}label{display:grid;gap:6px;font-weight:600;font-size:.86rem}input,select{width:100%;min-width:0;min-height:44px;border:1px solid #bccdc3;border-radius:7px;padding:8px;background:white;color:#17352d}.actions{display:grid;gap:8px}.total{font-size:2.5rem;font-weight:750;margin:8px 0}.badge{background:#e5efe7;padding:5px 10px;border-radius:30px;font-size:.84rem}.order{overflow-wrap:anywhere}#notice{min-height:1.4em;color:#854323}#paper{display:none}.line-total{margin:12px 0 0;text-align:right}.secondary{background:transparent}.history-actions{margin-top:14px}@media(max-width:760px){.layout{grid-template-columns:1fr}.sizes{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:420px){header{align-items:flex-start;flex-direction:column;gap:10px}.panel{padding:14px}main{padding:22px 14px}}@media print{header,main{display:none}body{background:white;color:black}#paper{display:block}article{break-inside:avoid;border-top:1px solid #999;margin-top:14px;padding-top:12px}h1{font-size:24pt}}
+</style>
+<header><strong>ASG Clothing Co.</strong><nav aria-label="Orders"><button id="editorTab">PO editor</button><button id="historyTab">Saved orders</button></nav></header>
+<main>
+<div class="hero"><h1>Interlining purchase orders</h1><p class="muted">Create an order and enter quantities by size.</p></div>
+<p id="notice" role="status"></p>
+<section id="editor">
+<form id="form" class="layout">
+<div>
+<div class="panel"><div class="row"><h2>Order details</h2><span class="badge order" id="number"></span></div>
+<div class="fields"><label>Order date<input type="date" id="date" required></label><label>Factory name<input id="factory" maxlength="120" required placeholder="Enter factory name"></label></div></div>
+<div id="lines"></div>
+<button type="button" id="add">+ Add line item</button>
+</div>
+<aside class="panel"><h2>Order summary</h2><p class="total" id="total">0</p><p class="muted" id="count"></p>
+<div class="actions"><button class="primary" type="submit">Save purchase order</button><button type="button" id="draft">Save draft</button><button type="button" id="print">Print / save PDF</button><button type="button" id="new" class="secondary">New order</button></div></aside>
+</form>
+</section>
+<section id="history" hidden><h2>Saved orders</h2><p class="muted">Drafts and purchase orders saved in this browser.</p><div id="records"></div></section>
+</main>
+<section id="paper" aria-label="Printable purchase order"></section>
+<script>
+'use strict';
+const sizes = {
+  'ASG CF':['S','M','L','XL','2XL','3XL'], 'ASG CF(M)':['S','M','L','XL','2XL','3XL'],
+  'RFB':['4-6YRS','7-10YRS','11-16YRS'], 'RFB(M)':['4-6YRS','7-10YRS','11-16YRS'],
+  'RFB [C]':['4-6YRS','7-10YRS','11-16YRS'], 'BSF':['16','18-26','28-32','34-38'],
+  'BFS(M)':['16','18-26','28-32','34-38']
+};
+const choices = {pattern:Object.keys(sizes),material:['5252 CANVAS','8080 MICRODOT'],color:['WHITE','CHARCOAL'],cuff:['DIAMOND','BOX','ROUND']};
+const parts = {collar:'Collar + Neck Band', cuff:'Cuff'};
+const key = 'asg-interlining-orders-v1';
+const byId = id => document.getElementById(id);
+const notice = message => {byId('notice').textContent = message;};
+const today = () => new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+const newLine = () => ({pattern:'ASG CF',material:'5252 CANVAS',color:'WHITE',cuff:'DIAMOND',components:{collar:{},cuff:{}}});
+function newOrder() {
+  const random = crypto.getRandomValues(new Uint8Array(12));
+  const suffix = Array.from(random, value => value.toString(16).padStart(2,'0')).join('').toUpperCase();
+  const date = today();
+  return {number:'ASG-'+date.replaceAll('-','')+'-'+suffix,date,factory:'',lines:[newLine()],status:'Draft'};
+}
+function readOrders() {
+  const records = JSON.parse(localStorage.getItem(key) || '{}');
+  for (const record of Object.values(records)) {
+    for (const line of record.lines) {
+      if (!line.components) {
+        line.components = {collar:{}, cuff:line.quantities || {}};
+        delete line.quantities;
+      }
+    }
+  }
+  return records;
+}
+let order = newOrder();
+let dirty = false;
+const partTotal = (line,part) => sizes[line.pattern].reduce((sum,size) => sum + (Number(line.components[part][size]) || 0),0);
+const lineTotal = line => partTotal(line,'collar') + partTotal(line,'cuff');
+const orderTotal = order => order.lines.reduce((sum,line) => sum + lineTotal(line),0);
+const format = value => value.toLocaleString();
+function make(tag, value, className) {
+  const element = document.createElement(tag);
+  if (value !== undefined) element.textContent = value;
+  if (className) element.className = className;
+  return element;
+}
+function button(label, callback) {
+  const control = make('button',label);
+  control.type = 'button';
+  control.onclick = callback;
+  return control;
+}
+function totals() {
+  byId('total').textContent = format(orderTotal(order));
+  byId('count').textContent = 'Total units across '+order.lines.length+' line item'+(order.lines.length===1?'':'s');
+}
+function renderLines() {
+  byId('lines').replaceChildren(...order.lines.map((line,index) => {
+    const card = make('section',undefined,'panel');
+    const heading = make('div',undefined,'row');
+    heading.append(make('h2','Line item '+(index+1)));
+    if (order.lines.length > 1) {
+      const remove = button('Remove',() => {order.lines.splice(index,1); dirty=true; renderLines();});
+      remove.setAttribute('aria-label','Remove line item '+(index+1));
+      heading.append(remove);
+    }
+    const fields = make('div',undefined,'fields');
+    const quantities = make('div');
+    const subtotal = make('p',undefined,'line-total muted');
+    function update() {
+      subtotal.textContent = 'Collar + Neck Band: '+format(partTotal(line,'collar'))+' | Cuff: '+format(partTotal(line,'cuff'))+' | Line total: '+format(lineTotal(line));
+      totals();
+    }
+    function renderSizes() {
+      quantities.replaceChildren(...Object.entries(parts).map(([part,name]) => {
+        const group = make('section');
+        const title = make('h3',name);
+        title.id = 'part-'+index+'-'+part;
+        group.setAttribute('aria-labelledby',title.id);
+        const grid = make('div',undefined,'sizes');
+        const counts = line.components[part];
+        grid.append(...sizes[line.pattern].map(size => {
+          const label = make('label',size);
+          const input = make('input');
+          input.type='number'; input.min='0'; input.max='999999999'; input.step='1'; input.inputMode='numeric';
+          input.setAttribute('aria-label',name+' quantity for '+size);
+          input.placeholder='0'; input.value=counts[size] ?? '';
+          input.addEventListener('input',() => {counts[size]=input.value; dirty=true; update();});
+          label.append(input);
+          return label;
+        }));
+        group.append(title,grid);
+        return group;
+      }));
+      update();
+    }
+    for (const [field,values] of Object.entries(choices)) {
+      const label = make('label',{pattern:'Pattern',material:'Material',color:'Color',cuff:'Cuff shape'}[field]);
+      const select = make('select');
+      select.append(...values.map(value=>new Option(value,value)));
+      select.value=line[field];
+      select.onchange=() => {line[field]=select.value; dirty=true; if(field==='pattern') renderSizes();};
+      label.append(select);
+      fields.append(label);
+    }
+    card.append(heading,fields,quantities,subtotal);
+    renderSizes();
+    return card;
+  }));
+  totals();
+}
+function show(tab) {
+  byId('editor').hidden=tab!=='editor';
+  byId('history').hidden=tab!=='history';
+  byId('editorTab').setAttribute('aria-current',tab==='editor');
+  byId('historyTab').setAttribute('aria-current',tab==='history');
+  if(tab==='history') renderHistory();
+}
+function openOrder(record) {
+  order=record; dirty=false;
+  byId('date').value=order.date;
+  byId('factory').value=order.factory;
+  byId('number').textContent=order.number;
+  renderLines();
+  show('editor');
+}
+function save(status) {
+  if (status==='Saved' && !validOrder()) return;
+  if (status==='Draft') {
+    for (const input of byId('lines').querySelectorAll('input')) if (!input.reportValidity()) return;
+  }
+  try {
+    const orders=readOrders();
+    const record={...order,status,updatedAt:Date.now()};
+    localStorage.setItem(key,JSON.stringify({...orders,[order.number]:record}));
+    order.status=status; dirty=false;
+    notice(status==='Draft'?'Draft saved.':'Purchase order saved.');
+  } catch {
+    notice('Could not save. Check browser storage and keep this tab open to preserve your changes.');
+  }
+}
+function validOrder() {
+  if(!byId('form').reportValidity()) return false;
+  if(!order.factory.trim()) {notice('Enter a factory name.'); byId('factory').focus(); return false;}
+  const empty=order.lines.findIndex(line=>lineTotal(line)===0);
+  if(empty!==-1) {notice('Enter a quantity greater than zero for line item '+(empty+1)+'.'); byId('lines').children[empty].querySelector('input').focus(); return false;}
+  return true;
+}
+function printOrder(record) {
+  const paper=byId('paper');
+  paper.replaceChildren(make('h1','ASG Clothing Co.'),make('h2','Interlining purchase order'),make('p',record.number),make('p','Order date: '+record.date),make('p','Factory: '+record.factory.trim()));
+  record.lines.forEach((line,index)=>{
+    const item=make('article');
+    item.append(make('h2',(index+1)+'. '+line.pattern),make('p',[line.material,line.color,line.cuff].join(' / ')));
+    for (const [part,name] of Object.entries(parts)) {
+      const list=make('ul');
+      for (const size of sizes[line.pattern]) {
+        list.append(make('li',size+': '+format(Number(line.components[part][size])||0)));
+      }
+      item.append(make('h3',name+' | '+format(partTotal(line,part))+' units'),list);
+    }
+    item.append(make('p','Line total: '+format(lineTotal(line))));
+    paper.append(item);
+  });
+  paper.append(make('h2','Total units: '+format(orderTotal(record))));
+  const title=document.title;
+  document.title=record.number;
+  try {window.print();} finally {document.title=title;}
+}
+function renderHistory() {
+  const records=byId('records');
+  try {
+    const saved=Object.values(readOrders()).sort((a,b)=>b.updatedAt-a.updatedAt);
+    records.replaceChildren(...saved.map(record=>{
+      const card=make('div',undefined,'panel order');
+      const top=make('div',undefined,'row');
+      top.append(make('h2',record.factory.trim()||'Untitled order'),make('span',record.status,'badge'));
+      const actions=make('div',undefined,'row history-actions');
+      actions.append(button('Open in editor',()=>{
+        if(dirty && !confirm('Discard unsaved changes and open this order?')) return;
+        notice(''); openOrder(record);
+      }));
+      if(record.status==='Saved') actions.append(button('Print / save PDF',()=>printOrder(record)));
+      card.append(top,make('p',record.number+' | '+(record.date||'No date')+' | '+format(orderTotal(record))+' units','muted'),actions);
+      return card;
+    }));
+    if(!saved.length) records.append(make('p','No saved orders yet.','panel muted'));
+  } catch {
+    records.replaceChildren(make('p','Orders could not be loaded. Check browser storage.','panel'));
+  }
+}
+byId('date').oninput=event=>{order.date=event.target.value;dirty=true;};
+byId('factory').oninput=event=>{order.factory=event.target.value;dirty=true;};
+byId('form').onsubmit=event=>{event.preventDefault();save('Saved');};
+byId('draft').onclick=()=>save('Draft');
+byId('print').onclick=()=>{if(validOrder()) printOrder(order);};
+byId('add').onclick=()=>{order.lines.push(newLine());dirty=true;renderLines();byId('lines').lastElementChild.querySelector('select').focus();};
+byId('new').onclick=()=>{if(!dirty||confirm('Discard unsaved changes and start a new order?')) {notice('');openOrder(newOrder());}};
+byId('editorTab').onclick=()=>{notice('');show('editor');};
+byId('historyTab').onclick=()=>{notice('');show('history');};
+window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Offline setup failed', error));
+}
+openOrder(order);
+</script>
+</html>
+
