@@ -19,7 +19,7 @@
 <div>
 <div class="panel"><div class="row"><h2>Order details</h2><span class="badge order" id="number"></span></div>
 <div class="fields"><label>Order type<select id="orderType"><option value="interlining">Interlining</option><option value="tags">MRP Tags</option></select></label><label>Order date<input type="date" id="date" required></label><label>Factory name<input id="factory" maxlength="120" required placeholder="Enter factory name"></label></div></div>
-<div id="lines"></div>
+<div id="lines"></div><datalist id="tag-style-options"><option value="Mandarin"></option><option value="Cuban"></option><option value="Baggy"></option><option value="Drop"></option></datalist>
 <button type="button" id="add">+ Add line item</button>
 </div>
 <aside class="panel"><h2>Order summary</h2><p class="total" id="total">0</p><p class="muted" id="count"></p>
@@ -50,8 +50,9 @@ const tagFields = [
   ['size','Size'], ['sleeve','Sleeve'], ['fit','Fit'], ['mrp','MRP (₹)'],
   ['pack','Pack qty'], ['quantity','Order qty']
 ];
+const tagStyles = ['ASG CF','RFB','BSF'];
 const newTag = previous => ({...Object.fromEntries(tagFields.map(([key]) => [key,''])),
-  ...previous, barcode:'', size:'', quantity:''});
+  ...previous, sizeStyle:previous?.sizeStyle || 'ASG CF', barcode:'', size:'', quantity:''});
 const isTag = order => order.type==='tags';
 const newLine = () => ({pattern:'ASG CF',material:'5252 CANVAS',color:'WHITE',cuff:'DIAMOND',components:{collar:{},cuff:{}}});
 function newOrder() {
@@ -105,10 +106,28 @@ function renderTags() {
       order.lines.splice(index,1); dirty=true; renderLines();
     }));
     const fields = make('div',undefined,'fields');
+    const familyLabel=make('label','Size style');
+    const family=make('select');
+    if(!line.sizeStyle) family.append(new Option('Select size style',''));
+    family.append(...tagStyles.map(style=>new Option(style,style)));
+    family.value=line.sizeStyle || '';
+    familyLabel.append(family);
+    fields.append(familyLabel);
     for(const [key,name] of tagFields) {
       const label=make('label',name);
+      if(key==='size' && line.sizeStyle) {
+        const input=make('select');
+        input.append(new Option('Select size',''),
+          ...sizes[line.sizeStyle].map(size=>new Option(size,size)));
+        input.value=line.size;
+        input.onchange=()=>{line.size=input.value;dirty=true;};
+        label.append(input);
+        fields.append(label);
+        continue;
+      }
       const input=make('input');
       input.maxLength=80;
+      if(key==='style') input.setAttribute('list','tag-style-options');
       if(key==='quantity' || key==='mrp') {
         input.type='number'; input.min='0'; input.max='999999999';
         input.step=key==='mrp'?'0.01':'1';
@@ -119,6 +138,13 @@ function renderTags() {
       label.append(input);
       fields.append(label);
     }
+    family.onchange=()=>{
+      line.sizeStyle=family.value;
+      if(!sizes[line.sizeStyle]?.includes(line.size)) line.size='';
+      dirty=true;
+      renderLines();
+      byId('lines').children[index].querySelector('select').focus();
+    };
     card.append(heading,fields);
     return card;
   }));
@@ -216,7 +242,8 @@ function validOrder() {
   if(!order.factory.trim()) {notice('Enter a factory name.'); byId('factory').focus(); return false;}
   if(isTag(order)) {
     const incomplete = order.lines.findIndex(line =>
-      !line.style.trim() || !line.size.trim() || line.mrp==='' || line.quantity==='');
+      !line.style.trim() || !line.size.trim() || (line.sizeStyle && !sizes[line.sizeStyle].includes(line.size)) ||
+      line.mrp==='' || line.quantity==='');
     if(incomplete!==-1) {
       notice('Enter style, size, MRP and order quantity for tag row '+(incomplete+1)+'.');
       return false;
@@ -335,6 +362,7 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && location
 openOrder(order);
 </script>
 </html>
+
 
 
 
